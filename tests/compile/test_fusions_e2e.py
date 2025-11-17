@@ -34,7 +34,7 @@ class Matches(NamedTuple):
 class ModelBackendTestCase(NamedTuple):
     model_name: str
     model_kwargs: dict[str, Any]
-    backend: AttentionBackendEnum
+    backend: _Backend
     matches: Matches
 
 
@@ -50,9 +50,7 @@ if current_platform.is_cuda():
             # TODO while llama4 is broken, use FLASHINFER for llama3 on Blackwell
             #  so FI attention+fp8_quant is at least tested once
             model_kwargs=dict(max_model_len=1024, kv_cache_dtype="fp8"),
-            backend=AttentionBackendEnum.FLASHINFER
-            if is_blackwell()
-            else AttentionBackendEnum.TRITON_ATTN,
+            backend=_Backend.FLASHINFER if is_blackwell() else _Backend.TRITON_ATTN,
             matches=Matches(
                 attention_fusion=32,
                 allreduce_fusion=65,
@@ -67,7 +65,7 @@ if current_platform.is_cuda():
             # https://github.com/vllm-project/vllm/issues/28568
             # TODO FlashInfer attn broken on Blackwell for llama4:
             # https://github.com/vllm-project/vllm/issues/28604
-            backend=AttentionBackendEnum.TRITON_ATTN,
+            backend=_Backend.TRITON_ATTN,
             matches=Matches(
                 attention_fusion=48,
                 allreduce_fusion=96,
@@ -81,7 +79,7 @@ if current_platform.is_cuda():
         ModelBackendTestCase(
             model_name="nvidia/Llama-3.1-8B-Instruct-FP4",
             model_kwargs=dict(max_model_len=1024, kv_cache_dtype="fp8"),
-            backend=AttentionBackendEnum.FLASHINFER,
+            backend=_Backend.FLASHINFER,
             matches=Matches(
                 attention_fusion=32,
                 allreduce_fusion=65,
@@ -96,7 +94,7 @@ if current_platform.is_cuda():
         ModelBackendTestCase(
             model_name="meta-llama/Llama-3.1-8B-Instruct",
             model_kwargs=dict(max_model_len=1024),
-            backend=AttentionBackendEnum.TRITON_ATTN,
+            backend=_Backend.TRITON_ATTN,
             matches=Matches(
                 attention_fusion=0,
                 allreduce_fusion=65,
@@ -107,7 +105,7 @@ if current_platform.is_cuda():
         ModelBackendTestCase(
             model_name="Qwen/Qwen3-30B-A3B",
             model_kwargs=dict(max_model_len=1024),
-            backend=AttentionBackendEnum.TRITON_ATTN,
+            backend=_Backend.TRITON_ATTN,
             matches=Matches(
                 attention_fusion=0,
                 allreduce_fusion=97,
@@ -122,19 +120,19 @@ elif current_platform.is_rocm():
         ModelBackendTestCase(
             model_name="amd/Llama-3.1-8B-Instruct-FP8-KV",
             model_kwargs=dict(max_model_len=1024),
-            backend=AttentionBackendEnum.TRITON_ATTN,
+            backend=_Backend.TRITON_ATTN,
             matches=Matches(attention_fusion=32),
         ),
         ModelBackendTestCase(
             model_name="amd/Llama-3.1-8B-Instruct-FP8-KV",
             model_kwargs=dict(max_model_len=1024),
-            backend=AttentionBackendEnum.ROCM_ATTN,
+            backend=_Backend.ROCM_ATTN,
             matches=Matches(attention_fusion=32),
         ),
         ModelBackendTestCase(
             model_name="amd/Llama-3.1-8B-Instruct-FP8-KV",
             model_kwargs=dict(max_model_len=1024),
-            backend=AttentionBackendEnum.ROCM_AITER_UNIFIED_ATTN,
+            backend=_Backend.ROCM_AITER_UNIFIED_ATTN,
             matches=Matches(attention_fusion=32),
         ),
     ]
@@ -153,16 +151,14 @@ CUSTOM_OPS_FP8 = ["-quant_fp8", "+quant_fp8"]
 def test_attn_quant(
     model_name: str,
     model_kwargs: dict[str, Any],
-    backend: AttentionBackendEnum,
+    backend: _Backend,
     matches: Matches,
     custom_ops: str,
     inductor_graph_partition: bool,
     caplog_mp_spawn,
     monkeypatch,
 ):
-    if backend == AttentionBackendEnum.FLASHINFER and (
-        not is_blackwell() or not has_flashinfer()
-    ):
+    if backend == _Backend.FLASHINFER and (not is_blackwell() or not has_flashinfer()):
         pytest.skip("FlashInfer attn fusion requires Blackwell and flashinfer")
     if inductor_graph_partition and not is_torch_equal_or_newer("2.9.0.dev"):
         pytest.skip("Inductor graph partition requires torch>=2.9")
@@ -242,7 +238,7 @@ def custom_ops_product(*custom_ops_lists: list[str]) -> Iterable[str]:
 def test_tp2_attn_quant_allreduce_rmsnorm(
     model_name: str,
     model_kwargs: dict,
-    backend: AttentionBackendEnum,
+    backend: _Backend,
     matches: Matches,
     custom_ops: str,
     inductor_graph_partition: bool,
@@ -255,7 +251,7 @@ def test_tp2_attn_quant_allreduce_rmsnorm(
     if "fp4" in model_name.lower() and not is_blackwell():
         pytest.skip("NVFP4 quant requires Blackwell")
 
-    if backend == AttentionBackendEnum.FLASHINFER and not is_blackwell():
+    if backend == _Backend.FLASHINFER and not is_blackwell():
         # FlashInfer attn fusion requires Blackwell
         matches = matches._replace(attention_fusion=0)
 
@@ -337,7 +333,7 @@ def test_tp2_attn_quant_allreduce_rmsnorm(
 def test_tp2_attn_quant_async_tp(
     model_name: str,
     model_kwargs: dict,
-    backend: AttentionBackendEnum,
+    backend: _Backend,
     matches: Matches,
     custom_ops: str,
     inductor_graph_partition: bool,
@@ -354,7 +350,7 @@ def test_tp2_attn_quant_async_tp(
     if "fp4" in model_name.lower() and not is_blackwell():
         pytest.skip("NVFP4 quant requires Blackwell")
 
-    if backend == AttentionBackendEnum.FLASHINFER:
+    if backend == _Backend.FLASHINFER:
         if not has_flashinfer():
             pytest.skip("FlashInfer backend requires flashinfer installed")
         if not is_blackwell():
