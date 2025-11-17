@@ -2608,7 +2608,6 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
                     positions,
                     intermediate_tensors,
                     model_kwargs,
-                    ec_connector_output,
                 ) = self._preprocess(
                     scheduler_output, num_input_tokens, intermediate_tensors
                 )
