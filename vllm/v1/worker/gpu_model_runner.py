@@ -4299,6 +4299,15 @@ class GPUModelRunner(
             # tokens on the CPU, so they are run after bookkeeping.
             propose_draft_token_ids(valid_sampled_token_ids)
 
+        # If input_fits_in_dafter is True, proposed_daft_token_ids will be
+        # skipped, which may cause hang when other dp execute dummy_run
+        if (
+            not input_fits_in_drafter
+            and spec_decode_common_attn_metadata is not None
+            and self.vllm_config.parallel_config.data_parallel_size > 1
+        ):
+            self.drafter.dummy_run(num_tokens=1, use_cudagraphs=True)
+
         # Finalize KV connector (wait_for_save + clear metadata) after
         # draft model runs. Deferred from target model forward to allow
         # draft model to also save its KV cache.
