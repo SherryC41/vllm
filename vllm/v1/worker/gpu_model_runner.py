@@ -4265,6 +4265,21 @@ class GPUModelRunner(
             else:
                 propose_drafts_after_bookkeeping = input_fits_in_drafter
 
+            # If input_fits_in_dafter is False, propose_draft_token_ids will be
+            # skipped, which may cause hang when other dp execute dummy_run
+            if (
+                not input_fits_in_drafter
+                and spec_decode_common_attn_metadata is not None
+                and self.vllm_config.parallel_config.data_parallel_size > 1
+                and self.speculative_config
+                and (
+                    self.speculative_config.use_eagle()
+                    or self.speculative_config.uses_draft_model()
+                    or self.speculative_config.uses_extract_hidden_states()
+                )
+            ):
+                self.drafter.dummy_run(num_tokens=1, use_cudagraphs=True)
+
             if not input_fits_in_drafter:
                 # Zero out draft tokens so the scheduler doesn't schedule
                 # stale drafts from the previous step.
@@ -4298,15 +4313,6 @@ class GPUModelRunner(
             # ngram and other speculative decoding methods use the sampled
             # tokens on the CPU, so they are run after bookkeeping.
             propose_draft_token_ids(valid_sampled_token_ids)
-
-        # If input_fits_in_dafter is True, proposed_daft_token_ids will be
-        # skipped, which may cause hang when other dp execute dummy_run
-        if (
-            not input_fits_in_drafter
-            and spec_decode_common_attn_metadata is not None
-            and self.vllm_config.parallel_config.data_parallel_size > 1
-        ):
-            self.drafter.dummy_run(num_tokens=1, use_cudagraphs=True)
 
         # Finalize KV connector (wait_for_save + clear metadata) after
         # draft model runs. Deferred from target model forward to allow
